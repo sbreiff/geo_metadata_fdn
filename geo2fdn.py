@@ -6,13 +6,13 @@ There will be a prompt to enter an email address after this module is imported.
 
 Functions:
 
-find_GEO_ids: takes in a GEO Datasets series accession, outputs a list of GEO ids
+find_geo_ids: takes in a GEO Datasets series accession, outputs a list of GEO ids
     for individual experiments
     Example usage:
     >>> find_GEO_ids('GSE62947')
     ['301536995', '301536994', '301536993', '301536992', '301536991', '301536990']
 
-find_SRA_id: takes in a GEO ID for an individual experiment,
+find_sra_id: takes in a GEO ID for an individual experiment,
     outputs an SRA ID
     Example usage:
     >>> find_SRA_id('302453298')
@@ -22,7 +22,13 @@ parse_sra_record: takes in an SRA id, fetches the corresponding SRA record, and
     parses it into an Experiment object
     Example usage:
     >>> parse_sra_record('3600868')
-    <get_GEO_metadata.Experiment object at 0x10eb019e8>
+    <geo2fdn.Experiment object at 0x10eb019e8>
+
+parse_bs_record: takes in an GEO id, fetches the related BioSample record, and
+    parses it into a Biosample object
+    Example usage:
+    >>> parse_bs_record('302453298')
+    <geo2fdn.Biosample object at 0x10eb019e8>
 
 get_fastq_table: takes in a GEO Datasets series accession and an output filename,
     generates a tab-delimited file with information about fastq files associated with
@@ -31,9 +37,13 @@ get_fastq_table: takes in a GEO Datasets series accession and an output filename
     Example usage:
     >>> get_fastq_table('GSE93431', 'test.tsv')
 
-Other functions to add later:
-- function to get list of GEO accessions of experiments in a series
-- think about how to generate a table for Experiment tab?
+get_exp_table:
+
+get_bs_table:
+
+create_dataset:
+
+modify_xls:
 
 '''
 
@@ -44,36 +54,6 @@ import xlwt
 from xlutils.copy import copy
 from Bio import Entrez
 Entrez.email = input('Enter email address to use NCBI Entrez: ')
-
-# def find_GEO_ids(acc):
-#     # finds GEO id numbers associated with a GEO series accession
-#     if acc.startswith('GSM') or acc.startswith('GSE'):
-#         handle = Entrez.esearch(db='gds', term=acc, retmax=1000)
-#         geo_xml = ET.fromstring(handle.read())
-#         return [item.text for item in geo_xml.find('IdList') if item.text.startswith('3')]
-#     else:
-#         raise ValueError('Input not a GEO Datasets accession. Accession must start with GSE or GSM.')
-#         return
-#
-# def find_SRA_id(geo_id):
-#     # finds SRA id number associated with a GEO id number
-#     try:
-#         num = int(geo_id)
-#     except:
-#         raise ValueError('Input must be a string of numbers.')
-#         return
-#     lines = Entrez.efetch(db='gds', id=geo_id).read().split('\n')
-#     sra_acc = None
-#     for line in lines:
-#         if line.startswith('SRA Run Selector'):
-#             sra_acc = line[line.index('=') + 1:]
-#             break
-#     if not sra_acc:
-#         print('No SRA record associated with ID %s.' % geo_id)
-#         return
-#     handle = Entrez.esearch(db='sra', term=sra_acc)
-#     sra_xml = ET.fromstring(handle.read())
-#     return sra_xml.find('IdList').find('Id').text
 
 
 class Experiment:
@@ -92,11 +72,11 @@ class Experiment:
 
 class Biosample:
 
-    def __init__(self, acc, organism, description, treatments):
+    def __init__(self, acc, organism, description):
         self.acc = acc
         self.organism = organism
         self.description = description
-        self.treatments = treatments
+        # self.treatments = treatments
 
 
 class Dataset:
@@ -170,17 +150,17 @@ def parse_bs_record(geo_id):
     descr = ''
     acc = bs_xml.find('./BioSample').attrib['accession']
     org = [item.text for item in bs_xml.iter("OrganismName")][0]
-    treatments = None
+    # treatments = None
     for item in bs_xml.iter("Attribute"):
         atts[item.attrib['attribute_name']] = item.text
     for name in ['sample_name', 'strain', 'genotype', 'cell_line', 'tissue', 'treatment']:
         if name in atts.keys() and atts[name].lower() != 'none':
             if atts[name] not in descr:
                 descr += atts[name] + '; '
-            if name == 'treatment':
-                treatments = atts[name]
+            # if name == 'treatment':
+            #     treatments = atts[name]
     descr = descr.rstrip('; ')
-    bs = Biosample(acc, org, descr, treatments)
+    bs = Biosample(acc, org, descr)
     return bs
 
 def get_fastq_table(geo_acc, lab_alias, outf):
@@ -230,8 +210,8 @@ def get_bs_table(geo_acc, lab_alias, outf):
     biosamples = [parse_bs_record(geo_id) for geo_id in geo_ids]
     with open(outf, 'w') as outfile:
         for biosample in biosamples:
-            outfile.write('%s:%s\t%s\t \t \t%s\t \t \t \t \t%s\n' % (lab_alias, biosample.acc,
-                            biosample.description, biosample.treatments, biosample.acc))
+            outfile.write('%s:%s\t%s\t \t \t \t \t \t \t \t \t%s\n' % (lab_alias, biosample.acc,
+                            biosample.description,  biosample.acc))
 
 def create_dataset(geo_acc):
     geo_ids = find_geo_ids(geo_acc)
@@ -254,7 +234,7 @@ def modify_xls(infile, outfile, geo, alias_prefix):
         for entry in gds.biosamples:
             bs.write(row, sheet_dict_bs['aliases'], alias_prefix + ':' + entry.acc)
             bs.write(row, sheet_dict_bs['description'], entry.description)
-            bs.write(row, sheet_dict_bs['treatments'], entry.treatments)
+            # bs.write(row, sheet_dict_bs['treatments'], entry.treatments)
             bs.write(row, sheet_dict_bs['dbxrefs'], 'BioSample:' + entry.acc)
             row += 1
     if 'FileFastq' in book.sheet_names():
