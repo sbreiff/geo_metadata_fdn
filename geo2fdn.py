@@ -160,7 +160,7 @@ def parse_bs_record(geo_id):
             if name == 'treatment':
                 treatments = atts[name]
                 if not sum([term in treatments.lower() for term in ['blank', 'none', 'n/a']]):
-                    print("Treatment(s) associated with Biosample accession %s")
+                    print("BioSample accession %s has treatment attribute but treatment not written to file" % acc)
     descr = descr.rstrip('; ')
     bs = Biosample(acc, org, descr)
     return bs
