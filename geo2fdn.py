@@ -157,8 +157,10 @@ def parse_bs_record(geo_id):
         if name in atts.keys() and atts[name].lower() != 'none':
             if atts[name] not in descr:
                 descr += atts[name] + '; '
-            # if name == 'treatment':
-            #     treatments = atts[name]
+            if name == 'treatment':
+                treatments = atts[name]
+                if not sum([term in treatments.lower() for term in ['blank', 'none', 'n/a']]):
+                    print("Treatment(s) associated with Biosample accession %s")
     descr = descr.rstrip('; ')
     bs = Biosample(acc, org, descr)
     return bs
