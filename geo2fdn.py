@@ -90,6 +90,7 @@ class Dataset:
         self.experiments = experiments
         self.biosamples = biosamples
 
+
 def find_geo_ids(acc):
     # finds GEO id numbers associated with a GEO series accession
     if acc.startswith('GSM') or acc.startswith('GSE'):
@@ -111,6 +112,7 @@ def find_geo_ids(acc):
         raise ValueError('Input not a GEO Datasets accession. Accession must start with GSE or GSM.')
         return
 
+
 def find_sra_id(geo_id):
     # finds SRA id number associated with a GEO id number
     try:
@@ -130,6 +132,7 @@ def find_sra_id(geo_id):
     handle = Entrez.esearch(db='sra', term=sra_acc)
     sra_xml = ET.fromstring(handle.read())
     return sra_xml.find('IdList').find('Id').text
+
 
 def parse_sra_record(sra_id):
     # also need to find sra accession
@@ -162,6 +165,7 @@ def parse_sra_record(sra_id):
     exp = Experiment(exp_type, instrument, layout, geo, title, runs, length, st, bs)
     return exp
 
+
 def parse_bs_record(geo_id):
     print("Fetching Biosample record...")
     bs_link = Entrez.elink(dbfrom='gds', db='biosample', id=geo_id)
@@ -176,7 +180,7 @@ def parse_bs_record(geo_id):
     # treatments = None
     for item in bs_xml.iter("Attribute"):
         atts[item.attrib['attribute_name']] = item.text
-    for name in ['sample_name', 'source name', 'strain', 'genotype', 'cell_line',
+    for name in ['sample_name', 'source_name', 'strain', 'genotype', 'cell_line',
                  'cell line', 'tissue', 'treatment']:
         if name in atts.keys() and atts[name].lower() != 'none':
             if atts[name] not in descr:
@@ -188,6 +192,7 @@ def parse_bs_record(geo_id):
     descr = descr.rstrip('; ')
     bs = Biosample(acc, org, descr)
     return bs
+
 
 def get_fastq_table(geo_acc, lab_alias, outf):
     if not geo_acc.startswith('GSE') and not geo_acc.startswith('GSM'):
@@ -212,6 +217,7 @@ def get_fastq_table(geo_acc, lab_alias, outf):
                     outfile.write('%s:%s_fq2\t%s\tfastq\t2\t \t \t%s\t%s\t%s\n' % (lab_alias, run,
                                     exp.title, str(exp.length), exp.instrument, run))
 
+
 def get_exp_table(geo_acc, lab_alias, outf):
     if not geo_acc.startswith('GSE') and not geo_acc.startswith('GSM'):
         raise ValueError('Input not a GEO Datasets series accession. Accession must start with GSE.')
@@ -226,6 +232,7 @@ def get_exp_table(geo_acc, lab_alias, outf):
         for exp in experiments:
             outfile.write('%s:%s\t%s')
 
+
 def get_bs_table(geo_acc, lab_alias, outf):
     '''
     - find geo accessions for each experiment
@@ -239,6 +246,7 @@ def get_bs_table(geo_acc, lab_alias, outf):
             outfile.write('%s:%s\t%s\t \t \t \t \t \t \t \t \t%s\n' % (lab_alias, biosample.acc,
                             biosample.description,  biosample.acc))
 
+
 def create_dataset(geo_acc):
     geo_ids = find_geo_ids(geo_acc)
     sra_ids = [item for item in [find_sra_id(geo_id) for geo_id in geo_ids] if item]
@@ -248,6 +256,11 @@ def create_dataset(geo_acc):
     gds = Dataset(geo_acc, geo_ids, [parse_sra_record(sra_id) for sra_id in sra_ids],
                     [parse_bs_record(geo_id) for geo_id in geo_ids])
     return gds
+
+
+def write_experiment(sheet, sheet_dict, experiment, alias, file_dict):
+    pass
+
 
 def modify_xls(infile, outfile, geo, alias_prefix):
     gds = create_dataset(geo)
@@ -345,32 +358,32 @@ def modify_xls(infile, outfile, geo, alias_prefix):
             row = book.sheet_by_name('ExperimentSeq').nrows
             print("Writing ExperimentSeq sheet...")
             for entry in gds.experiments:
-                # if entry.exptype in ['chip-seq', 'rna-seq', 'tsa-seq']:
-                seq.write(row, sheet_dict_seq['aliases'], alias_prefix + ':' + entry.geo)
-                seq.write(row, sheet_dict_seq['description'], entry.title)
-                seq.write(row, sheet_dict_seq['*biosample'], alias_prefix + ':' + entry.bs)
-                seq.write(row, sheet_dict_seq['files'], ','.join(file_dict[entry.geo]))
-                seq.write(row, sheet_dict_seq['dbxrefs'], 'GEO:' + entry.geo)
-                if entry.exptype.lower() == 'chip-seq':
-                    seq.write(row, sheet_dict_seq['*experiment_type'], 'CHIP-seq')
-                elif entry.exptype.lower() == 'tsa-seq':
-                    seq.write(row, sheet_dict_seq['*experiment_type'], 'TSA-seq')
-                elif entry.exptype.lower() == 'rna-seq':
-                    seq.write(row, sheet_dict_seq['*experiment_type'], 'RNA-seq')
-                row += 1
+                if entry.exptype in ['chip-seq', 'rna-seq', 'tsa-seq']:
+                    seq.write(row, sheet_dict_seq['aliases'], alias_prefix + ':' + entry.geo)
+                    seq.write(row, sheet_dict_seq['description'], entry.title)
+                    seq.write(row, sheet_dict_seq['*biosample'], alias_prefix + ':' + entry.bs)
+                    seq.write(row, sheet_dict_seq['files'], ','.join(file_dict[entry.geo]))
+                    seq.write(row, sheet_dict_seq['dbxrefs'], 'GEO:' + entry.geo)
+                    if entry.exptype.lower() == 'chip-seq':
+                        seq.write(row, sheet_dict_seq['*experiment_type'], 'CHIP-seq')
+                    elif entry.exptype.lower() == 'tsa-seq':
+                        seq.write(row, sheet_dict_seq['*experiment_type'], 'TSA-seq')
+                    elif entry.exptype.lower() == 'rna-seq':
+                        seq.write(row, sheet_dict_seq['*experiment_type'], 'RNA-seq')
+                    row += 1
                 # if entry.exptype == 'chip-seq':
                 #     pass
                 # if entry.exptype == 'rna-seq':
                 #     pass
-        # if 'ExperimentAtacseq' in book.sheet_names() and 'atac-seq' in exp_types:
-        #     sheet_dict_atac = {}
-        #     atac_sheets = book.sheet_by_name('ExperimentAtacseq').row_values(0)
-        #     for item in atac_sheets:
-        #         sheet_dict_atac[item] = atac_sheets.index(item)
-        #     atac = outbook.get_sheet('ExperimentAtacseq')
-        #     row = book.sheet_by_name('ExperimentAtacseq').nrows
-        #     for entry in (exp for exp in gds.experiments if exp.exptype == 'atac-seq'):
-        #         pass
+        if 'ExperimentAtacseq' in book.sheet_names() and 'atac-seq' in exp_types:
+            sheet_dict_atac = {}
+            atac_sheets = book.sheet_by_name('ExperimentAtacseq').row_values(0)
+            for item in atac_sheets:
+                sheet_dict_atac[item] = atac_sheets.index(item)
+            atac = outbook.get_sheet('ExperimentAtacseq')
+            row = book.sheet_by_name('ExperimentAtacseq').nrows
+            for entry in (exp for exp in gds.experiments if exp.exptype == 'atac-seq'):
+                pass
         # if 'other' in exp_types:
         #     # need to add these attributes to class
         #     titles = [exp.title.lower() for exp in gds.experiments] +
