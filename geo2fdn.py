@@ -45,6 +45,8 @@ create_dataset:
 
 modify_xls:
 
+Maybe combine table functions into one?
+
 '''
 
 import xml.etree.ElementTree as ET
@@ -146,7 +148,7 @@ def parse_sra_record(sra_id):
         soft = request.urlopen('https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=' + geo + '&form=text&view=full')
         gsm = soft.read().decode('utf-8').split('\r\n')
         for line in gsm:
-            if line.startswith('!Sample_data_processing = library strategy:'):
+            if line.startswith('!Sample_data_processing = Library strategy:'):
                 exp_type = line[line.index(':') + 2:]
     title = record.find('SAMPLE').find('TITLE').text
     instrument = [item.text for item in record.iter('INSTRUMENT_MODEL')][0]
@@ -174,7 +176,8 @@ def parse_bs_record(geo_id):
     # treatments = None
     for item in bs_xml.iter("Attribute"):
         atts[item.attrib['attribute_name']] = item.text
-    for name in ['sample_name', 'strain', 'genotype', 'cell_line', 'tissue', 'treatment']:
+    for name in ['sample_name', 'source name', 'strain', 'genotype', 'cell_line',
+                 'cell line', 'tissue', 'treatment']:
         if name in atts.keys() and atts[name].lower() != 'none':
             if atts[name] not in descr:
                 descr += atts[name] + '; '
@@ -303,7 +306,7 @@ def modify_xls(infile, outfile, geo, alias_prefix):
                     row += 2
                 elif entry.layout.lower() == 'single':
                     fq_0 = alias_prefix + ':' + run + '_fq'
-                    file_dict[entry.geo] += fq_0
+                    file_dict[entry.geo] += [fq_0]
                     fq.write(row, sheet_dict_fq['aliases'], fq_0)
                     # fq.write(row, sheet_dict_fq['description'], entry.description)
                     fq.write(row, sheet_dict_fq['*file_format'], 'fastq')
@@ -315,8 +318,8 @@ def modify_xls(infile, outfile, geo, alias_prefix):
                     raise ValueError("Invalid value for layout. Layout must be 'single' or 'paired'.")
     if len([name for name in book.sheet_names() if name.startswith('Experiment')]) > 0:
         exp_types = [experiment.exptype.lower() for experiment in gds.experiments]
-        if 'ExperimentHiC' in book.sheet_names() and [exp for exp in exp_types if exp.lower().startswith('hic')
-                                                        or exp.lower().startswith('hi-c')]:
+        if 'ExperimentHiC' in book.sheet_names() and [exp for exp in exp_types if exp.startswith('hic')
+                                                        or exp.startswith('hi-c')]:
             sheet_dict_hic = {}
             hic_sheets = book.sheet_by_name('ExperimentHiC').row_values(0)
             for item in hic_sheets:
@@ -331,20 +334,34 @@ def modify_xls(infile, outfile, geo, alias_prefix):
                 hic.write(row, sheet_dict_hic['files'], ','.join(file_dict[entry.geo]))
                 hic.write(row, sheet_dict_hic['dbxrefs'], 'GEO:' + entry.geo)
                 row += 1
-        else:
-            print("Experiments not found to be of supported type(s). No Experiment sheet being written.")
-        # if 'ExperimentSeq' in book.sheet_names():
-        #     sheet_dict_seq = {}
-        #     seq_sheets = book.sheet_by_name('ExperimentSeq').row_values(0)
-        #     for item in seq_sheets:
-        #         sheet_dict_seq[item] = seq_sheets.index(item)
-        #     seq = outbook.get_sheet('ExperimentSeq')
-        #     row = book.sheet_by_name('ExperimentSeq').nrows
-        #     for entry in gds.experiments:
-        #         if entry.exptype == 'chip-seq':
-        #             pass
-        #         if entry.exptype == 'rna-seq':
-        #             pass
+        # else:
+        #     print("Experiments not found to be of supported type(s). No Experiment sheet being written.")
+        if 'ExperimentSeq' in book.sheet_names() and [exp for exp in exp_types if exp in ['chip-seq', 'rna-seq', 'tsa-seq']]:
+            sheet_dict_seq = {}
+            seq_sheets = book.sheet_by_name('ExperimentSeq').row_values(0)
+            for item in seq_sheets:
+                sheet_dict_seq[item] = seq_sheets.index(item)
+            seq = outbook.get_sheet('ExperimentSeq')
+            row = book.sheet_by_name('ExperimentSeq').nrows
+            print("Writing ExperimentSeq sheet...")
+            for entry in gds.experiments:
+                # if entry.exptype in ['chip-seq', 'rna-seq', 'tsa-seq']:
+                seq.write(row, sheet_dict_seq['aliases'], alias_prefix + ':' + entry.geo)
+                seq.write(row, sheet_dict_seq['description'], entry.title)
+                seq.write(row, sheet_dict_seq['*biosample'], alias_prefix + ':' + entry.bs)
+                seq.write(row, sheet_dict_seq['files'], ','.join(file_dict[entry.geo]))
+                seq.write(row, sheet_dict_seq['dbxrefs'], 'GEO:' + entry.geo)
+                if entry.exptype.lower() == 'chip-seq':
+                    seq.write(row, sheet_dict_seq['*experiment_type'], 'CHIP-seq')
+                elif entry.exptype.lower() == 'tsa-seq':
+                    seq.write(row, sheet_dict_seq['*experiment_type'], 'TSA-seq')
+                elif entry.exptype.lower() == 'rna-seq':
+                    seq.write(row, sheet_dict_seq['*experiment_type'], 'RNA-seq')
+                row += 1
+                # if entry.exptype == 'chip-seq':
+                #     pass
+                # if entry.exptype == 'rna-seq':
+                #     pass
         # if 'ExperimentAtacseq' in book.sheet_names() and 'atac-seq' in exp_types:
         #     sheet_dict_atac = {}
         #     atac_sheets = book.sheet_by_name('ExperimentAtacseq').row_values(0)
