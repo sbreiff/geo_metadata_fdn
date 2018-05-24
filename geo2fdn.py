@@ -49,6 +49,7 @@ modify_xls:
 
 import xml.etree.ElementTree as ET
 from numpy import mean
+from urllib import request
 import xlrd
 import xlwt
 from xlutils.copy import copy
@@ -90,9 +91,20 @@ class Dataset:
 def find_geo_ids(acc):
     # finds GEO id numbers associated with a GEO series accession
     if acc.startswith('GSM') or acc.startswith('GSE'):
+        print("Searching GEO accession...")
         handle = Entrez.esearch(db='gds', term=acc, retmax=1000)
         geo_xml = ET.fromstring(handle.read())
-        return [item.text for item in geo_xml.find('IdList') if item.text.startswith('3')]
+        ids = [item.text for item in geo_xml.find('IdList')]
+        gse_ids = [item for item in ids if item.startswith('2')]
+        if gse_ids:
+            soft = request.urlopen('https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=' +
+                               acc + '&form=text&view=full')
+            gse = soft.read().decode('utf-8').split('\r\n')
+            for line in gse:
+                if line.startswith('!Series_type = '):
+                    if "other" not in line.lower() and "sequencing" not in line:
+                        print('')
+        return [geo_id for geo_id in ids if geo_id.startswith('3')]
     else:
         raise ValueError('Input not a GEO Datasets accession. Accession must start with GSE or GSM.')
         return
@@ -124,13 +136,21 @@ def parse_sra_record(sra_id):
     except:
         raise ValueError('Input must be a string of numbers.')
         return
+    print("Fetching SRA record...")
     handle = Entrez.efetch(db="sra", id=sra_id)
     record = ET.fromstring(handle.readlines()[2])
     exp_type = record.find('EXPERIMENT').find('DESIGN').find('LIBRARY_DESCRIPTOR').find('LIBRARY_STRATEGY').text
     geo = record.find('EXPERIMENT').get('alias')
+    if exp_type.lower() == "other":
+        # get GEO record
+        soft = request.urlopen('https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=' + geo + '&form=text&view=full')
+        gsm = soft.read().decode('utf-8').split('\r\n')
+        for line in gsm:
+            if line.startswith('!Sample_data_processing = library strategy:'):
+                exp_type = line[line.index(':') + 2:]
     title = record.find('SAMPLE').find('TITLE').text
     instrument = [item.text for item in record.iter('INSTRUMENT_MODEL')][0]
-    length = int(mean([int(item.get('average')) for item in record.iter('Read') if item.get('count') != '0']))
+    length = int(mean([int(float(item.get('average'))) for item in record.iter('Read') if item.get('count') != '0']))
     st = record.find('STUDY').find('DESCRIPTOR').find('STUDY_TITLE').text
     bs = list(set([item.text for item in record.iter('EXTERNAL_ID') if item.attrib['namespace'] == 'BioSample']))[0]
     for item in record.find('EXPERIMENT').find('DESIGN').find('LIBRARY_DESCRIPTOR').find('LIBRARY_LAYOUT'):
@@ -141,6 +161,7 @@ def parse_sra_record(sra_id):
     return exp
 
 def parse_bs_record(geo_id):
+    print("Fetching Biosample record...")
     bs_link = Entrez.elink(dbfrom='gds', db='biosample', id=geo_id)
     bslink_xml = ET.fromstring(bs_link.read())
     bs_id = [item.find('Id').text for item in bslink_xml.iter("Link")][0]
@@ -217,13 +238,18 @@ def get_bs_table(geo_acc, lab_alias, outf):
 
 def create_dataset(geo_acc):
     geo_ids = find_geo_ids(geo_acc)
-    sra_ids = [find_sra_id(geo_id) for geo_id in geo_ids]
+    sra_ids = [item for item in [find_sra_id(geo_id) for geo_id in geo_ids] if item]
+    if not sra_ids:
+        print('No SRA records associated with accession. Exiting.')
+        return
     gds = Dataset(geo_acc, geo_ids, [parse_sra_record(sra_id) for sra_id in sra_ids],
                     [parse_bs_record(geo_id) for geo_id in geo_ids])
     return gds
 
 def modify_xls(infile, outfile, geo, alias_prefix):
     gds = create_dataset(geo)
+    if not gds:
+        return
     book = xlrd.open_workbook(infile)
     outbook = copy(book)
     if 'Biosample' in book.sheet_names():
@@ -233,6 +259,7 @@ def modify_xls(infile, outfile, geo, alias_prefix):
             sheet_dict_bs[item] = bs_sheets.index(item)
         bs = outbook.get_sheet('Biosample')
         row = book.sheet_by_name('Biosample').nrows
+        print("Writing Biosample sheet...")
         for entry in gds.biosamples:
             bs.write(row, sheet_dict_bs['aliases'], alias_prefix + ':' + entry.acc)
             bs.write(row, sheet_dict_bs['description'], entry.description)
@@ -247,6 +274,7 @@ def modify_xls(infile, outfile, geo, alias_prefix):
         fq = outbook.get_sheet('FileFastq')
         row = book.sheet_by_name('FileFastq').nrows
         file_dict = {}
+        print("Writing FileFastq sheet...")
         for entry in gds.experiments:
             file_dict[entry.geo] = []
             for run in entry.runs:
@@ -287,13 +315,15 @@ def modify_xls(infile, outfile, geo, alias_prefix):
                     raise ValueError("Invalid value for layout. Layout must be 'single' or 'paired'.")
     if len([name for name in book.sheet_names() if name.startswith('Experiment')]) > 0:
         exp_types = [experiment.exptype.lower() for experiment in gds.experiments]
-        if 'ExperimentHiC' in book.sheet_names() and 'hi-c' in exp_types:
+        if 'ExperimentHiC' in book.sheet_names() and [exp for exp in exp_types if exp.lower().startswith('hic')
+                                                        or exp.lower().startswith('hi-c')]:
             sheet_dict_hic = {}
             hic_sheets = book.sheet_by_name('ExperimentHiC').row_values(0)
             for item in hic_sheets:
                 sheet_dict_hic[item] = hic_sheets.index(item)
             hic = outbook.get_sheet('ExperimentHiC')
             row = book.sheet_by_name('ExperimentHiC').nrows
+            print("Writing ExperimentHiC sheet...")
             for entry in (exp for exp in gds.experiments if exp.exptype == 'hi-c'):
                 hic.write(row, sheet_dict_hic['aliases'], alias_prefix + ':' + entry.geo)
                 hic.write(row, sheet_dict_hic['description'], entry.title)
@@ -301,18 +331,20 @@ def modify_xls(infile, outfile, geo, alias_prefix):
                 hic.write(row, sheet_dict_hic['files'], ','.join(file_dict[entry.geo]))
                 hic.write(row, sheet_dict_hic['dbxrefs'], 'GEO:' + entry.geo)
                 row += 1
-        if 'ExperimentSeq' in book.sheet_names():
-            sheet_dict_seq = {}
-            seq_sheets = book.sheet_by_name('ExperimentSeq').row_values(0)
-            for item in seq_sheets:
-                sheet_dict_seq[item] = seq_sheets.index(item)
-            seq = outbook.get_sheet('ExperimentSeq')
-            row = book.sheet_by_name('ExperimentSeq').nrows
-            for entry in gds.experiments:
-                if entry.exptype == 'chip-seq':
-                    pass
-                if entry.exptype == 'rna-seq':
-                    pass
+        else:
+            print("Experiments not found to be of supported type(s). No Experiment sheet being written.")
+        # if 'ExperimentSeq' in book.sheet_names():
+        #     sheet_dict_seq = {}
+        #     seq_sheets = book.sheet_by_name('ExperimentSeq').row_values(0)
+        #     for item in seq_sheets:
+        #         sheet_dict_seq[item] = seq_sheets.index(item)
+        #     seq = outbook.get_sheet('ExperimentSeq')
+        #     row = book.sheet_by_name('ExperimentSeq').nrows
+        #     for entry in gds.experiments:
+        #         if entry.exptype == 'chip-seq':
+        #             pass
+        #         if entry.exptype == 'rna-seq':
+        #             pass
         # if 'ExperimentAtacseq' in book.sheet_names() and 'atac-seq' in exp_types:
         #     sheet_dict_atac = {}
         #     atac_sheets = book.sheet_by_name('ExperimentAtacseq').row_values(0)
