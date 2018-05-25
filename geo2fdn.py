@@ -1,54 +1,17 @@
+#!/usr/bin/env python3
+# -*- coding: latin-1 -*-
+
 '''
-Script for obtaining metadata about fastq files, etc. associated with a GEO Datasets accession.
+Script for obtaining metadata about fastq files, etc. associated with a GEO Series accession.
 
 Note: Use of NCBI's Entrez querying system requires an email address.
 There will be a prompt to enter an email address after this module is imported.
 
-Functions:
-
-find_geo_ids: takes in a GEO Datasets series accession, outputs a list of GEO ids
-    for individual experiments
-    Example usage:
-    >>> find_GEO_ids('GSE62947')
-    ['301536995', '301536994', '301536993', '301536992', '301536991', '301536990']
-
-find_sra_id: takes in a GEO ID for an individual experiment,
-    outputs an SRA ID
-    Example usage:
-    >>> find_SRA_id('302453298')
-    '3600868'
-
-parse_sra_record: takes in an SRA id, fetches the corresponding SRA record, and
-    parses it into an Experiment object
-    Example usage:
-    >>> parse_sra_record('3600868')
-    <geo2fdn.Experiment object at 0x10eb019e8>
-
-parse_bs_record: takes in an GEO id, fetches the related BioSample record, and
-    parses it into a Biosample object
-    Example usage:
-    >>> parse_bs_record('302453298')
-    <geo2fdn.Biosample object at 0x10eb019e8>
-
-get_fastq_table: takes in a GEO Datasets series accession and an output filename,
-    generates a tab-delimited file with information about fastq files associated with
-    GEO accession (file type, single/paired, number from pair, read length,
-    sequencer, SRA run accession)
-    Example usage:
-    >>> get_fastq_table('GSE93431', 'test.tsv')
-
-get_exp_table:
-
-get_bs_table:
-
-create_dataset:
-
-modify_xls:
-
-Maybe combine table functions into one?
+[Maybe combine table functions into one?]
 
 '''
 
+import argparse
 import xml.etree.ElementTree as ET
 from numpy import mean
 from urllib import request
@@ -62,13 +25,13 @@ Entrez.email = input('Enter email address to use NCBI Entrez: ')
 class Experiment:
 
     def __init__(self, exptype, instr, layout, geo, title, runs, length, study_title, biosample):
-        self.exptype = exptype.lower()
-        self.instr = instr
+        self.exptype = exptype.lower()  # experiment type
+        self.instr = instr  # sequencing instrument
         self.layout = layout  # single or paired end
-        self.geo = geo
+        self.geo = geo  # geo accession starting with GSM
         self.title = title
-        self.runs = runs
-        self.length = length
+        self.runs = runs  # list of SRA accessions starting with SRR
+        self.length = length  # mean read length
         self.study_title = study_title
         self.bs = biosample
 
@@ -76,7 +39,7 @@ class Experiment:
 class Biosample:
 
     def __init__(self, acc, organism, description):
-        self.acc = acc
+        self.acc = acc  # BioSample accession starting with SAMN
         self.organism = organism
         self.description = description
         # self.treatments = treatments
@@ -85,10 +48,34 @@ class Biosample:
 class Dataset:
 
     def __init__(self, gse, ids, experiments, biosamples):
-        self.gse = gse
-        self.ids = ids
-        self.experiments = experiments
-        self.biosamples = biosamples
+        self.gse = gse  # GEO Series accession starting with GSE
+        self.ids = ids  # GEO sample ids associated with series
+        self.experiments = experiments  # list of experiment objects
+        self.biosamples = biosamples  # list of biosample objects
+
+
+def getArgs():  # pragma: no cover
+    parser = argparse.ArgumentParser(
+        description="Add GEO metadata to a submit4dn metadata workbook.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('geo_accession',
+                        help="GEO accession",
+                        action="store")
+    parser.add_argument('-i', '--infile',
+                        help="Input xls file",
+                        action="store",
+                        required=True)
+    parser.add_argument('-o', '--outfile',
+                        help="Output xls file",
+                        default='',
+                        action="store")
+    parser.add_argument('-a', '--alias',
+                        help="Alias prefix, example: '4dn-dcic-lab'",
+                        action="store",
+                        default="4dn-dcic-lab")
+    args = parser.parse_args()
+    return args
 
 
 def find_geo_ids(acc):
@@ -135,7 +122,8 @@ def find_sra_id(geo_id):
 
 
 def parse_sra_record(sra_id):
-    # also need to find sra accession
+    # takes in an SRA id, fetches the corresponding SRA record, and
+    # parses it into an Experiment object
     try:
         num = int(sra_id)
     except:
@@ -148,7 +136,8 @@ def parse_sra_record(sra_id):
     geo = record.find('EXPERIMENT').get('alias')
     if exp_type.lower() == "other":
         # get GEO record
-        soft = request.urlopen('https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=' + geo + '&form=text&view=full')
+        soft = request.urlopen('https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=' +
+                               geo + '&form=text&view=full')
         gsm = soft.read().decode('utf-8').split('\r\n')
         for line in gsm:
             if line.startswith('!Sample_data_processing = Library strategy:'):
@@ -167,6 +156,8 @@ def parse_sra_record(sra_id):
 
 
 def parse_bs_record(geo_id):
+    # takes in an GEO id, fetches the related BioSample record, and
+    # parses it into a Biosample object
     print("Fetching Biosample record...")
     bs_link = Entrez.elink(dbfrom='gds', db='biosample', id=geo_id)
     bslink_xml = ET.fromstring(bs_link.read())
@@ -196,7 +187,8 @@ def parse_bs_record(geo_id):
 
 def get_fastq_table(geo_acc, lab_alias, outf):
     if not geo_acc.startswith('GSE') and not geo_acc.startswith('GSM'):
-        raise ValueError('Input not a GEO Datasets series accession. Accession must start with GSE.')
+        raise ValueError('Input not a GEO Datasets series accession. Accession \
+                         must start with GSE.')
     geo_ids = find_GEO_ids(geo_acc)
     sra_ids = [find_SRA_id(geo_id) for geo_id in geo_ids]
     experiments = []
@@ -208,19 +200,20 @@ def get_fastq_table(geo_acc, lab_alias, outf):
         for exp in experiments:
             if exp.layout == 'single':  # single end reads
                 for run in exp.runs:
-                    outfile.write('%s:%s_fq\t%s\tfastq\t \t \t \t%s\t%s\t%s\n' % (lab_alias, run,
-                                    exp.title, str(exp.length), exp.instrument, run))
+                    outfile.write('%s:%s_fq\t%s\tfastq\t \t \t \t%s\t%s\t%s\n' % (lab_alias,
+                                    run,exp.title, str(exp.length), exp.instrument, run))
             elif exp.layout == 'paired':  # paired end reads
                 for run in exp.runs:
-                    outfile.write('%s:%s_fq1\t%s\tfastq\t1\t \t \t%s\t%s\t%s\n' % (lab_alias, run,
-                                    exp.title, str(exp.length), exp.instrument, run))
-                    outfile.write('%s:%s_fq2\t%s\tfastq\t2\t \t \t%s\t%s\t%s\n' % (lab_alias, run,
-                                    exp.title, str(exp.length), exp.instrument, run))
+                    outfile.write('%s:%s_fq1\t%s\tfastq\t1\t \t \t%s\t%s\t%s\n' % (lab_alias,
+                                    run, exp.title, str(exp.length), exp.instrument, run))
+                    outfile.write('%s:%s_fq2\t%s\tfastq\t2\t \t \t%s\t%s\t%s\n' % (lab_alias,
+                                    run, exp.title, str(exp.length), exp.instrument, run))
 
 
 def get_exp_table(geo_acc, lab_alias, outf):
     if not geo_acc.startswith('GSE') and not geo_acc.startswith('GSM'):
-        raise ValueError('Input not a GEO Datasets series accession. Accession must start with GSE.')
+        raise ValueError('Input not a GEO Datasets series accession. Accession \
+                         must start with GSE.')
     geo_ids = find_GEO_ids(geo_acc)
     sra_ids = [find_SRA_id(geo_id) for geo_id in geo_ids]
     experiments = []
@@ -243,8 +236,8 @@ def get_bs_table(geo_acc, lab_alias, outf):
     biosamples = [parse_bs_record(geo_id) for geo_id in geo_ids]
     with open(outf, 'w') as outfile:
         for biosample in biosamples:
-            outfile.write('%s:%s\t%s\t \t \t \t \t \t \t \t \t%s\n' % (lab_alias, biosample.acc,
-                            biosample.description,  biosample.acc))
+            outfile.write('%s:%s\t%s\t \t \t \t \t \t \t \t \t%s\n' % (lab_alias,
+                            biosample.acc, biosample.description,  biosample.acc))
 
 
 def create_dataset(geo_acc):
@@ -262,7 +255,7 @@ def write_experiment(sheet, sheet_dict, experiment, alias, file_dict):
     pass
 
 
-def modify_xls(infile, outfile, geo, alias_prefix):
+def modify_xls(geo, infile, outfile, alias_prefix):
     gds = create_dataset(geo)
     if not gds:
         return
@@ -349,7 +342,8 @@ def modify_xls(infile, outfile, geo, alias_prefix):
                 row += 1
         # else:
         #     print("Experiments not found to be of supported type(s). No Experiment sheet being written.")
-        if 'ExperimentSeq' in book.sheet_names() and [exp for exp in exp_types if exp in ['chip-seq', 'rna-seq', 'tsa-seq']]:
+        if 'ExperimentSeq' in book.sheet_names() and [exp for exp in exp_types if exp in
+                                                      ['chip-seq', 'rna-seq', 'tsa-seq']]:
             sheet_dict_seq = {}
             seq_sheets = book.sheet_by_name('ExperimentSeq').row_values(0)
             for item in seq_sheets:
@@ -383,7 +377,12 @@ def modify_xls(infile, outfile, geo, alias_prefix):
             atac = outbook.get_sheet('ExperimentAtacseq')
             row = book.sheet_by_name('ExperimentAtacseq').nrows
             for entry in (exp for exp in gds.experiments if exp.exptype == 'atac-seq'):
-                pass
+                atac.write(row, sheet_dict_atac['aliases'], alias_prefix + ':' + entry.geo)
+                atac.write(row, sheet_dict_atac['description'], entry.title)
+                atac.write(row, sheet_dict_atac['*biosample'], alias_prefix + ':' + entry.bs)
+                atac.write(row, sheet_dict_atac['files'], ','.join(file_dict[entry.geo]))
+                atac.write(row, sheet_dict_atac['dbxrefs'], 'GEO:' + entry.geo)
+                row += 1
         # if 'other' in exp_types:
         #     # need to add these attributes to class
         #     titles = [exp.title.lower() for exp in gds.experiments] +
@@ -417,4 +416,15 @@ def modify_xls(infile, outfile, geo, alias_prefix):
         #         chia = outbook.get_sheet('ExperimentChiapet')
         #         row = book.sheet_by_name('ExperimentChiapet').nrows
     outbook.save(outfile)
+    print("Wrote file to %s." % outfile)
     return
+
+
+def main():
+    args = getArgs()
+    out_file = args.outfile if args.outfile else args.geo_accession + '.xls'
+    modify_xls(args.geo_accession, args.infile, out_file, args.alias)
+
+
+if __name__ == '__main__':
+    main()
