@@ -359,7 +359,8 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
     exp_sheets = [name for name in book.sheet_names() if name.startswith('Experiment')]
     if len(exp_sheets) > 0:
         exp_types = [experiment.exptype.lower() for experiment in gds.experiments]
-        hic_expts = [exp for exp in exp_types if exp.startswith('hic') or exp.startswith('dnase hic')]
+        hic_expts = [exp for exp in gds.experiments if exp.exptype.startswith('hic') or
+                     exp.exptype.startswith('dnase hic')]
         if 'ExperimentHiC' in book.sheet_names() and hic_expts:
             write_experiments('ExperimentHiC', hic_expts, alias_prefix, file_dict, book, outbook)
             # write_experiments(sheet_name, experiments, alias, file_dict, inbook, outbook)
