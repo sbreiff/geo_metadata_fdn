@@ -12,9 +12,11 @@ There will be a prompt to enter an email address after this module is imported.
 '''
 
 import argparse
-import xml.etree.ElementTree as ET
+import re
+import sys
 from numpy import mean
 from urllib import request
+import xml.etree.ElementTree as ET
 import xlrd
 import xlwt
 from xlutils.copy import copy
@@ -54,28 +56,37 @@ class Dataset:
         self.biosamples = biosamples  # list of biosample objects
 
 
-def getArgs():  # pragma: no cover
-    parser = argparse.ArgumentParser(
-        description="Add GEO metadata to a submit4dn metadata workbook.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument('geo_accession',
-                        help="GEO accession",
-                        action="store")
-    parser.add_argument('-i', '--infile',
-                        help="Input xls file",
-                        action="store",
-                        required=True)
-    parser.add_argument('-o', '--outfile',
-                        help="Output xls file",
-                        default='',
-                        action="store")
-    parser.add_argument('-a', '--alias',
-                        help="Alias prefix, example: '4dn-dcic-lab'",
-                        action="store",
-                        default="4dn-dcic-lab")
-    args = parser.parse_args()
-    return args
+# def getArgs():  # pragma: no cover
+#     parser = argparse.ArgumentParser(
+#         description="Add GEO metadata to a submit4dn metadata workbook.",
+#         formatter_class=argparse.RawDescriptionHelpFormatter,
+#     )
+#     parser.add_argument('geo_accession',
+#                         help="GEO accession",
+#                         action="store")
+#     parser.add_argument('-i', '--infile',
+#                         help="Input xls file",
+#                         action="store",
+#                         required=True)
+#     parser.add_argument('-o', '--outfile',
+#                         help="Output xls file",
+#                         default='',
+#                         action="store")
+#     parser.add_argument('-a', '--alias',
+#                         help="Alias prefix, example: '4dn-dcic-lab'",
+#                         action="store",
+#                         default="4dn-dcic-lab")
+#     parser.add_argument('-t', '--type',
+#                         help="Type of experiment in series. Accepted types: \
+#                         HiC, ChIP-seq, RNA-seq, TSA-seq, ATAC-seq, DamID, Repliseq",
+#                         action="store",
+#                         default=None)
+#     args = parser.parse_args()
+#     return args
+
+
+valid_types = ['hic', 'hicseq', 'dnase hic', 'rnaseq', 'tsaseq', 'chipseq',
+               'capturec', 'repliseq', 'atacseq', 'damid', 'damidseq']
 
 
 def find_geo_ids(acc):
@@ -121,7 +132,7 @@ def find_sra_id(geo_id):
     return sra_xml.find('IdList').find('Id').text
 
 
-def parse_sra_record(sra_id):
+def parse_sra_record(sra_id, experiment_type=None):
     # takes in an SRA id, fetches the corresponding SRA record, and
     # parses it into an Experiment object
     try:
@@ -132,7 +143,10 @@ def parse_sra_record(sra_id):
     print("Fetching SRA record...")
     handle = Entrez.efetch(db="sra", id=sra_id)
     record = ET.fromstring(handle.readlines()[2])
-    exp_type = record.find('EXPERIMENT').find('DESIGN').find('LIBRARY_DESCRIPTOR').find('LIBRARY_STRATEGY').text
+    if experiment_type:
+        exp_type = experiment_type
+    else:
+        exp_type = record.find('EXPERIMENT').find('DESIGN').find('LIBRARY_DESCRIPTOR').find('LIBRARY_STRATEGY').text
     geo = record.find('EXPERIMENT').get('alias')
     if exp_type.lower() == "other":
         # get GEO record
@@ -151,7 +165,7 @@ def parse_sra_record(sra_id):
         layout = item.tag.lower()
         break
     runs = [item.get('accession') for item in record.find('RUN_SET').findall('RUN')]
-    exp = Experiment(exp_type, instrument, layout, geo, title, runs, length, st, bs)
+    exp = Experiment(re.sub('-', '', exp_type.lower()), instrument, layout, geo, title, runs, length, st, bs)
     return exp
 
 
@@ -171,8 +185,8 @@ def parse_bs_record(geo_id):
     # treatments = None
     for item in bs_xml.iter("Attribute"):
         atts[item.attrib['attribute_name']] = item.text
-    for name in ['sample_name', 'source_name', 'strain', 'genotype', 'cell_line',
-                 'cell line', 'tissue', 'treatment']:
+    for name in ['sample_name', 'strain', 'genotype', 'cell_line',
+                 'cell line', 'tissue', 'sirna transfected', 'treatment']:
         if name in atts.keys() and atts[name].lower() != 'none':
             if atts[name] not in descr:
                 descr += atts[name] + '; '
@@ -251,11 +265,31 @@ def create_dataset(geo_acc):
     return gds
 
 
-def write_experiment(sheet, sheet_dict, experiment, alias, file_dict):
-    pass
+def write_experiments(sheet_name, experiments, alias, file_dict, inbook, outbook):
+    sheet_dict = {}
+    fields = inbook.sheet_by_name(sheet_name).row_values(0)
+    for item in fields:
+        sheet_dict[item] = fields.index(item)
+    sheet = outbook.get_sheet(sheet_name)
+    row = inbook.sheet_by_name(sheet_name).nrows
+    print("Writing %s sheet..." % sheet_name)
+    for entry in experiments:
+        # if entry.exptype in ['chipseq', 'rnaseq', 'tsaseq']:
+        sheet.write(row, sheet_dict['aliases'], alias_prefix + ':' + entry.geo)
+        sheet.write(row, sheet_dict['description'], entry.title)
+        sheet.write(row, sheet_dict['*biosample'], alias_prefix + ':' + entry.bs)
+        sheet.write(row, sheet_dict['files'], ','.join(file_dict[entry.geo]))
+        sheet.write(row, sheet_dict['dbxrefs'], 'GEO:' + entry.geo)
+        if entry.exptype.lower() == 'chipseq':
+            sheet.write(row, sheet_dict['*experiment_type'], 'CHIP-seq')
+        elif entry.exptype.lower() == 'tsaseq':
+            sheet.write(row, sheet_dict['*experiment_type'], 'TSA-seq')
+        elif entry.exptype.lower() == 'rnaseq':
+            sheet.write(row, sheet_dict['*experiment_type'], 'RNA-seq')
+        row += 1
 
 
-def modify_xls(geo, infile, outfile, alias_prefix):
+def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=valid_types):
     gds = create_dataset(geo)
     if not gds:
         return
@@ -322,108 +356,171 @@ def modify_xls(geo, infile, outfile, alias_prefix):
                     row += 1
                 else:
                     raise ValueError("Invalid value for layout. Layout must be 'single' or 'paired'.")
-    if len([name for name in book.sheet_names() if name.startswith('Experiment')]) > 0:
+    exp_sheets = [name for name in book.sheet_names() if name.startswith('Experiment')]
+    if len(exp_sheets) > 0:
         exp_types = [experiment.exptype.lower() for experiment in gds.experiments]
-        if 'ExperimentHiC' in book.sheet_names() and [exp for exp in exp_types if exp.startswith('hic')
-                                                        or exp.startswith('hi-c')]:
-            sheet_dict_hic = {}
-            hic_sheets = book.sheet_by_name('ExperimentHiC').row_values(0)
-            for item in hic_sheets:
-                sheet_dict_hic[item] = hic_sheets.index(item)
-            hic = outbook.get_sheet('ExperimentHiC')
-            row = book.sheet_by_name('ExperimentHiC').nrows
-            print("Writing ExperimentHiC sheet...")
-            for entry in (exp for exp in gds.experiments if exp.exptype == 'hi-c'):
-                hic.write(row, sheet_dict_hic['aliases'], alias_prefix + ':' + entry.geo)
-                hic.write(row, sheet_dict_hic['description'], entry.title)
-                hic.write(row, sheet_dict_hic['*biosample'], alias_prefix + ':' + entry.bs)
-                hic.write(row, sheet_dict_hic['files'], ','.join(file_dict[entry.geo]))
-                hic.write(row, sheet_dict_hic['dbxrefs'], 'GEO:' + entry.geo)
-                row += 1
+        hic_expts = [exp for exp in exp_types if exp.startswith('hic') or exp.startswith('dnase hic')]
+        if 'ExperimentHiC' in book.sheet_names() and hic_expts:
+            write_experiments('ExperimentHiC', hic_expts, alias_prefix, file_dict, book, outbook)
+            # write_experiments(sheet_name, experiments, alias, file_dict, inbook, outbook)
+            # sheet_dict_hic = {}
+            # hic_sheets = book.sheet_by_name('ExperimentHiC').row_values(0)
+            # for item in hic_sheets:
+            #     sheet_dict_hic[item] = hic_sheets.index(item)
+            # hic = outbook.get_sheet('ExperimentHiC')
+            # row = book.sheet_by_name('ExperimentHiC').nrows
+            # print("Writing ExperimentHiC sheet...")
+            # for entry in (exp for exp in gds.experiments if exp.exptype.startswith('hic')):
+            #     hic.write(row, sheet_dict_hic['aliases'], alias_prefix + ':' + entry.geo)
+            #     hic.write(row, sheet_dict_hic['description'], entry.title)
+            #     hic.write(row, sheet_dict_hic['*biosample'], alias_prefix + ':' + entry.bs)
+            #     hic.write(row, sheet_dict_hic['files'], ','.join(file_dict[entry.geo]))
+            #     hic.write(row, sheet_dict_hic['dbxrefs'], 'GEO:' + entry.geo)
+            #     row += 1
         # else:
         #     print("Experiments not found to be of supported type(s). No Experiment sheet being written.")
-        if 'ExperimentSeq' in book.sheet_names() and [exp for exp in exp_types if exp in
-                                                      ['chip-seq', 'rna-seq', 'tsa-seq']]:
-            sheet_dict_seq = {}
-            seq_sheets = book.sheet_by_name('ExperimentSeq').row_values(0)
-            for item in seq_sheets:
-                sheet_dict_seq[item] = seq_sheets.index(item)
-            seq = outbook.get_sheet('ExperimentSeq')
-            row = book.sheet_by_name('ExperimentSeq').nrows
-            print("Writing ExperimentSeq sheet...")
-            for entry in gds.experiments:
-                if entry.exptype in ['chip-seq', 'rna-seq', 'tsa-seq']:
-                    seq.write(row, sheet_dict_seq['aliases'], alias_prefix + ':' + entry.geo)
-                    seq.write(row, sheet_dict_seq['description'], entry.title)
-                    seq.write(row, sheet_dict_seq['*biosample'], alias_prefix + ':' + entry.bs)
-                    seq.write(row, sheet_dict_seq['files'], ','.join(file_dict[entry.geo]))
-                    seq.write(row, sheet_dict_seq['dbxrefs'], 'GEO:' + entry.geo)
-                    if entry.exptype.lower() == 'chip-seq':
-                        seq.write(row, sheet_dict_seq['*experiment_type'], 'CHIP-seq')
-                    elif entry.exptype.lower() == 'tsa-seq':
-                        seq.write(row, sheet_dict_seq['*experiment_type'], 'TSA-seq')
-                    elif entry.exptype.lower() == 'rna-seq':
-                        seq.write(row, sheet_dict_seq['*experiment_type'], 'RNA-seq')
-                    row += 1
+        seq_expts = [exp for exp in exp_types if exp in ['chipseq', 'rnaseq', 'tsaseq']]
+        if 'ExperimentSeq' in book.sheet_names() and seq_expts:
+            write_experiments('ExperimentSeq', seq_expts, alias_prefix, file_dict, book, outbook)
+            # sheet_dict_seq = {}
+            # seq_sheets = book.sheet_by_name('ExperimentSeq').row_values(0)
+            # for item in seq_sheets:
+            #     sheet_dict_seq[item] = seq_sheets.index(item)
+            # seq = outbook.get_sheet('ExperimentSeq')
+            # row = book.sheet_by_name('ExperimentSeq').nrows
+            # print("Writing ExperimentSeq sheet...")
+            # for entry in gds.experiments:
+            #     if entry.exptype in ['chipseq', 'rnaseq', 'tsaseq']:
+            #         seq.write(row, sheet_dict_seq['aliases'], alias_prefix + ':' + entry.geo)
+            #         seq.write(row, sheet_dict_seq['description'], entry.title)
+            #         seq.write(row, sheet_dict_seq['*biosample'], alias_prefix + ':' + entry.bs)
+            #         seq.write(row, sheet_dict_seq['files'], ','.join(file_dict[entry.geo]))
+            #         seq.write(row, sheet_dict_seq['dbxrefs'], 'GEO:' + entry.geo)
+            #         if entry.exptype.lower() == 'chip-seq':
+            #             seq.write(row, sheet_dict_seq['*experiment_type'], 'CHIP-seq')
+            #         elif entry.exptype.lower() == 'tsa-seq':
+            #             seq.write(row, sheet_dict_seq['*experiment_type'], 'TSA-seq')
+            #         elif entry.exptype.lower() == 'rna-seq':
+            #             seq.write(row, sheet_dict_seq['*experiment_type'], 'RNA-seq')
+            #         row += 1
                 # if entry.exptype == 'chip-seq':
                 #     pass
                 # if entry.exptype == 'rna-seq':
                 #     pass
-        if 'ExperimentAtacseq' in book.sheet_names() and 'atac-seq' in exp_types:
-            sheet_dict_atac = {}
-            atac_sheets = book.sheet_by_name('ExperimentAtacseq').row_values(0)
-            for item in atac_sheets:
-                sheet_dict_atac[item] = atac_sheets.index(item)
-            atac = outbook.get_sheet('ExperimentAtacseq')
-            row = book.sheet_by_name('ExperimentAtacseq').nrows
-            for entry in (exp for exp in gds.experiments if exp.exptype == 'atac-seq'):
-                atac.write(row, sheet_dict_atac['aliases'], alias_prefix + ':' + entry.geo)
-                atac.write(row, sheet_dict_atac['description'], entry.title)
-                atac.write(row, sheet_dict_atac['*biosample'], alias_prefix + ':' + entry.bs)
-                atac.write(row, sheet_dict_atac['files'], ','.join(file_dict[entry.geo]))
-                atac.write(row, sheet_dict_atac['dbxrefs'], 'GEO:' + entry.geo)
-                row += 1
+        if 'ExperimentAtacseq' in book.sheet_names() and 'atacseq' in exp_types:
+            # sheet_dict_atac = {}
+            # atac_sheets = book.sheet_by_name('ExperimentAtacseq').row_values(0)
+            # for item in atac_sheets:
+            #     sheet_dict_atac[item] = atac_sheets.index(item)
+            # atac = outbook.get_sheet('ExperimentAtacseq')
+            # row = book.sheet_by_name('ExperimentAtacseq').nrows
+            # for entry in (exp for exp in gds.experiments if exp.exptype == 'atacseq'):
+            #     atac.write(row, sheet_dict_atac['aliases'], alias_prefix + ':' + entry.geo)
+            #     atac.write(row, sheet_dict_atac['description'], entry.title)
+            #     atac.write(row, sheet_dict_atac['*biosample'], alias_prefix + ':' + entry.bs)
+            #     atac.write(row, sheet_dict_atac['files'], ','.join(file_dict[entry.geo]))
+            #     atac.write(row, sheet_dict_atac['dbxrefs'], 'GEO:' + entry.geo)
+            #     row += 1
         # if 'other' in exp_types:
         #     # need to add these attributes to class
         #     titles = [exp.title.lower() for exp in gds.experiments] +
         #                 [exp.study_title.lower() for exp in gds.experiments]
-        #     if 'ExperimentRepliseq' in book.sheet_names() and 'repliseq' in titles:
-        #         sheet_dict_rep = {}
-        #         rep_sheets = book.sheet_by_name('ExperimentRepliseq').row_values(0)
-        #         for item in rep_sheets:
-        #             sheet_dict_rep[item] = rep_sheets.index(item)
-        #         rep = outbook.get_sheet('ExperimentRepliseq')
-        #         row = book.sheet_by_name('ExperimentRepliseq').nrows
-        #     if 'ExperimentDamid' in book.sheet_names() and 'dam' in titles:
-        #         sheet_dict_dam = {}
-        #         dam_sheets = book.sheet_by_name('ExperimentDamid').row_values(0)
-        #         for item in dam_sheets:
-        #             sheet_dict_dam[item] = dam_sheets.index(item)
-        #         dam = outbook.get_sheet('ExperimentDamid')
-        #         row = book.sheet_by_name('ExperimentDamid').nrows
-        #     if 'ExperimentCaptureC' in book.sheet_names() and 'capture-C' in titles:
-        #         sheet_dict_cc = {}
-        #         cc_sheets = book.sheet_by_name('ExperimentCaptureC').row_values(0)
-        #         for item in cc_sheets:
-        #             sheet_dict_cc[item] = cc_sheets.index(item)
-        #         cc = outbook.get_sheet('ExperimentCaptureC')
-        #         row = book.sheet_by_name('ExperimentCaptureC').nrows
-        #     if 'ExperimentChiapet' in book.sheet_names() and 'chiapet' in titles:
-        #         sheet_dict_chia = {}
-        #         chia_sheets = book.sheet_by_name('ExperimentChiapet').row_values(0)
-        #         for item in chia_sheets:
-        #             sheet_dict_chia[item] = chia_sheets.index(item)
-        #         chia = outbook.get_sheet('ExperimentChiapet')
-        #         row = book.sheet_by_name('ExperimentChiapet').nrows
+        if 'ExperimentRepliseq' in book.sheet_names() and 'repliseq' in exp_types:
+            # sheet_dict_rep = {}
+            # rep_sheets = book.sheet_by_name('ExperimentRepliseq').row_values(0)
+            # for item in rep_sheets:
+            #     sheet_dict_rep[item] = rep_sheets.index(item)
+            # rep = outbook.get_sheet('ExperimentRepliseq')
+            # row = book.sheet_by_name('ExperimentRepliseq').nrows
+            # for entry in (exp for exp in gds.experiments if exp.exptype == 'repliseq'):
+            #     rep.write(row, sheet_dict_rep['aliases'], alias_prefix + ':' + entry.geo)
+            #     rep.write(row, sheet_dict_rep['description'], entry.title)
+            #     rep.write(row, sheet_dict_rep['*biosample'], alias_prefix + ':' + entry.bs)
+            #     rep.write(row, sheet_dict_rep['files'], ','.join(file_dict[entry.geo]))
+            #     rep.write(row, sheet_dict_rep['dbxrefs'], 'GEO:' + entry.geo)
+            #     row += 1
+        if 'ExperimentDamid' in book.sheet_names() and [exp for exp in exp_types if exp.startswith('damid')]:
+            # may miss some experiments depending on annotation
+            # sheet_dict_dam = {}
+            # dam_sheets = book.sheet_by_name('ExperimentDamid').row_values(0)
+            # for item in dam_sheets:
+            #     sheet_dict_dam[item] = dam_sheets.index(item)
+            # dam = outbook.get_sheet('ExperimentDamid')
+            # row = book.sheet_by_name('ExperimentDamid').nrows
+            # for entry in (exp for exp in gds.experiments if exp.exptype.startswith('damid')):
+            #     dam.write(row, sheet_dict_dam['aliases'], alias_prefix + ':' + entry.geo)
+            #     dam.write(row, sheet_dict_dam['description'], entry.title)
+            #     dam.write(row, sheet_dict_dam['*biosample'], alias_prefix + ':' + entry.bs)
+            #     dam.write(row, sheet_dict_dam['files'], ','.join(file_dict[entry.geo]))
+            #     dam.write(row, sheet_dict_dam['dbxrefs'], 'GEO:' + entry.geo)
+            #     row += 1
+        if 'ExperimentCaptureC' in book.sheet_names() and 'capturec' in exp_types:
+            # may miss some experiments depending on annotation
+            # sheet_dict_cc = {}
+            # cc_sheets = book.sheet_by_name('ExperimentCaptureC').row_values(0)
+            # for item in cc_sheets:
+            #     sheet_dict_cc[item] = cc_sheets.index(item)
+            # cc = outbook.get_sheet('ExperimentCaptureC')
+            # row = book.sheet_by_name('ExperimentCaptureC').nrows
+            # for entry in (exp for exp in gds.experiments if exp.exptype == 'capturec'):
+            #     cc.write(row, sheet_dict_cc['aliases'], alias_prefix + ':' + entry.geo)
+            #     cc.write(row, sheet_dict_cc['description'], entry.title)
+            #     cc.write(row, sheet_dict_cc['*biosample'], alias_prefix + ':' + entry.bs)
+            #     cc.write(row, sheet_dict_cc['files'], ','.join(file_dict[entry.geo]))
+            #     cc.write(row, sheet_dict_cc['dbxrefs'], 'GEO:' + entry.geo)
+            #     row += 1
+        if 'ExperimentChiapet' in book.sheet_names() and 'chiapet' in exp_types:
+            # sheet_dict_chia = {}
+            # chia_sheets = book.sheet_by_name('ExperimentChiapet').row_values(0)
+            # for item in chia_sheets:
+            #     sheet_dict_chia[item] = chia_sheets.index(item)
+            # chia = outbook.get_sheet('ExperimentChiapet')
+            # row = book.sheet_by_name('ExperimentChiapet').nrows
+            # for entry in (exp for exp in gds.experiments if exp.exptype == 'chiapet'):
+            #     chia.write(row, sheet_dict_chia['aliases'], alias_prefix + ':' + entry.geo)
+            #     chia.write(row, sheet_dict_chia['description'], entry.title)
+            #     chia.write(row, sheet_dict_chia['*biosample'], alias_prefix + ':' + entry.bs)
+            #     chia.write(row, sheet_dict_chia['files'], ','.join(file_dict[entry.geo]))
+            #     chia.write(row, sheet_dict_chia['dbxrefs'], 'GEO:' + entry.geo)
+            #     row += 1
+        other = [exp for exp in gds.experiments if exp.exptype not in types]
+        if other:
+            if len(other) == len(gds.experiments):
+                print("Experiment types of dataset could not be parsed. %s sheet not written" %
+                      ', '.join(exp_sheets))
+            else:
+                print("The following accessions had experiment types that could not be parsed:")
+                for item in other:
+                    print(item.geo)
+            print("If these samples are of a single known experiment type, this script \
+                  can be rerun using -t <experiment_type>")
     outbook.save(outfile)
     print("Wrote file to %s." % outfile)
     return
 
 
-def main():
-    args = getArgs()
+def main(types=valid_types):
+    parser = argparse.ArgumentParser(
+            description="Add GEO metadata to a submit4dn metadata workbook.",
+            formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('geo_accession', help="GEO accession", action="store")
+    parser.add_argument('-i', '--infile', help="Input xls file",
+                        action="store", required=True)
+    parser.add_argument('-o', '--outfile', help="Output xls file",
+                        default='', action="store")
+    parser.add_argument('-a', '--alias', help="Alias prefix, example: '4dn-dcic-lab'",
+                        action="store", default="4dn-dcic-lab")
+    parser.add_argument('-t', '--type',
+                        help="Type of experiment in series. Accepted types: \
+                              HiC, ChIP-seq, RNA-seq, TSA-seq, ATAC-seq, DamID, Repliseq",
+                        action="store", default=None)
+    args = parser.parse_args()
     out_file = args.outfile if args.outfile else args.geo_accession + '.xls'
-    modify_xls(args.geo_accession, args.infile, out_file, args.alias)
+    if args.type not in types:
+        print("\nError: %s not a recognized type\n" % args.type)
+        parser.print_help()
+        sys.exit()
+    modify_xls(args.geo_accession, args.infile, out_file, args.alias, args.type)
 
 
 if __name__ == '__main__':
