@@ -86,9 +86,19 @@ class Series:
 def parse_fdn_xls(fdn_xls):
     book = xlrd.open_workbook(fdn_xls)
     sheet = book.sheet_by_name('Biosample')
+    bs_fields = book.sheet_by_name('Biosample').row_values(0)
+    bs_dict = {}
+    if '*biosource' in bs_fields:
+        bs_dict['biosource'] = bs_fields.index('*biosource')
+    if 'treatments' in bs_fields:
+        bs_dict['treatments'] = bs_fields.index('treatments')
     # start with BioSample
+    # get list of biosources
     # while doing this either take info from Biosource sheet, or look up biosource on portal
-
+    if 'Biosource' in book.sheet_names():
+        pass
+    else:
+        pass
     # parse treatments
 
     # next parse FileFastq sheet
@@ -99,6 +109,7 @@ def parse_fdn_xls(fdn_xls):
 # method to grab extra info from data portal? Ex. md5
 
 def create_geo_soft(series_obj, soft_outfile):
+
     with open(soft_outfile, 'w') as soft:
 
         for sample in series_obj.samples:
