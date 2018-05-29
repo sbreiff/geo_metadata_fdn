@@ -21,7 +21,7 @@ import xlrd
 import xlwt
 from xlutils.copy import copy
 from Bio import Entrez
-Entrez.email = input('Enter email address to use NCBI Entrez: ')
+# Entrez.email = input('Enter email address to use NCBI Entrez: ')
 
 
 class Experiment:
@@ -265,7 +265,7 @@ def create_dataset(geo_acc):
     return gds
 
 
-def write_experiments(sheet_name, experiments, alias, file_dict, inbook, outbook):
+def write_experiments(sheet_name, experiments, alias_prefix, file_dict, inbook, outbook):
     sheet_dict = {}
     fields = inbook.sheet_by_name(sheet_name).row_values(0)
     for item in fields:
@@ -287,6 +287,7 @@ def write_experiments(sheet_name, experiments, alias, file_dict, inbook, outbook
         elif entry.exptype.lower() == 'rnaseq':
             sheet.write(row, sheet_dict['*experiment_type'], 'RNA-seq')
         row += 1
+    return outbook
 
 
 def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=valid_types):
@@ -362,7 +363,7 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
         hic_expts = [exp for exp in gds.experiments if exp.exptype.startswith('hic') or
                      exp.exptype.startswith('dnase hic')]
         if 'ExperimentHiC' in book.sheet_names() and hic_expts:
-            write_experiments('ExperimentHiC', hic_expts, alias_prefix, file_dict, book, outbook)
+            outbook = write_experiments('ExperimentHiC', hic_expts, alias_prefix, file_dict, book, outbook)
             # write_experiments(sheet_name, experiments, alias, file_dict, inbook, outbook)
             # sheet_dict_hic = {}
             # hic_sheets = book.sheet_by_name('ExperimentHiC').row_values(0)
@@ -380,9 +381,9 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             #     row += 1
         # else:
         #     print("Experiments not found to be of supported type(s). No Experiment sheet being written.")
-        seq_expts = [exp for exp in exp_types if exp in ['chipseq', 'rnaseq', 'tsaseq']]
+        seq_expts = [exp for exp in gds.experiments if exp.exptype in ['chipseq', 'rnaseq', 'tsaseq']]
         if 'ExperimentSeq' in book.sheet_names() and seq_expts:
-            write_experiments('ExperimentSeq', seq_expts, alias_prefix, file_dict, book, outbook)
+            outbook = write_experiments('ExperimentSeq', seq_expts, alias_prefix, file_dict, book, outbook)
             # sheet_dict_seq = {}
             # seq_sheets = book.sheet_by_name('ExperimentSeq').row_values(0)
             # for item in seq_sheets:
@@ -408,7 +409,9 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
                 #     pass
                 # if entry.exptype == 'rna-seq':
                 #     pass
-        if 'ExperimentAtacseq' in book.sheet_names() and 'atacseq' in exp_types:
+        atac_expts = [exp for exp in gds.experiments if exp.exptype == 'atacseq']
+        if 'ExperimentAtacseq' in book.sheet_names() and atac_expts:
+            outbook = write_experiments('ExperimentAtacseq', atac_expts, alias_prefix, file_dict, book, outbook)
             # sheet_dict_atac = {}
             # atac_sheets = book.sheet_by_name('ExperimentAtacseq').row_values(0)
             # for item in atac_sheets:
@@ -426,7 +429,9 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
         #     # need to add these attributes to class
         #     titles = [exp.title.lower() for exp in gds.experiments] +
         #                 [exp.study_title.lower() for exp in gds.experiments]
-        if 'ExperimentRepliseq' in book.sheet_names() and 'repliseq' in exp_types:
+        rep_expts = [exp for exp in gds.experiments if exp.exptype == 'repliseq']
+        if 'ExperimentRepliseq' in book.sheet_names() and rep_expts:
+            outbook = write_experiments('ExperimentRepliseq', rep_expts, alias_prefix, file_dict, book, outbook)
             # sheet_dict_rep = {}
             # rep_sheets = book.sheet_by_name('ExperimentRepliseq').row_values(0)
             # for item in rep_sheets:
@@ -440,7 +445,9 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             #     rep.write(row, sheet_dict_rep['files'], ','.join(file_dict[entry.geo]))
             #     rep.write(row, sheet_dict_rep['dbxrefs'], 'GEO:' + entry.geo)
             #     row += 1
-        if 'ExperimentDamid' in book.sheet_names() and [exp for exp in exp_types if exp.startswith('damid')]:
+        dam_expts = [exp for exp in gds.experiments if exp.exptype.startswith('damid')]
+        if 'ExperimentDamid' in book.sheet_names() and dam_expts:
+            outbook = write_experiments('ExperimentDamid', dam_expts, alias_prefix, file_dict, book, outbook)
             # may miss some experiments depending on annotation
             # sheet_dict_dam = {}
             # dam_sheets = book.sheet_by_name('ExperimentDamid').row_values(0)
@@ -455,7 +462,9 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             #     dam.write(row, sheet_dict_dam['files'], ','.join(file_dict[entry.geo]))
             #     dam.write(row, sheet_dict_dam['dbxrefs'], 'GEO:' + entry.geo)
             #     row += 1
-        if 'ExperimentCaptureC' in book.sheet_names() and 'capturec' in exp_types:
+        cap_expts = [exp for exp in gds.experiments if exp.exptype == 'capturec']
+        if 'ExperimentCaptureC' in book.sheet_names() and cap_expts:
+            outbook = write_experiments('ExperimentCaptureC', cap_expts, alias_prefix, file_dict, book, outbook)
             # may miss some experiments depending on annotation
             # sheet_dict_cc = {}
             # cc_sheets = book.sheet_by_name('ExperimentCaptureC').row_values(0)
@@ -470,7 +479,9 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             #     cc.write(row, sheet_dict_cc['files'], ','.join(file_dict[entry.geo]))
             #     cc.write(row, sheet_dict_cc['dbxrefs'], 'GEO:' + entry.geo)
             #     row += 1
-        if 'ExperimentChiapet' in book.sheet_names() and 'chiapet' in exp_types:
+        chia_expts = [exp for exp in gds.experiments if exp.exptype == 'chiapet']
+        if 'ExperimentChiapet' in book.sheet_names() and chia_expts:
+            outbook = write_experiments('ExperimentChiapet', chia_expts, alias_prefix, file_dict, book, outbook)
             # sheet_dict_chia = {}
             # chia_sheets = book.sheet_by_name('ExperimentChiapet').row_values(0)
             # for item in chia_sheets:
@@ -517,10 +528,11 @@ def main(types=valid_types):
                         action="store", default=None)
     args = parser.parse_args()
     out_file = args.outfile if args.outfile else args.geo_accession + '.xls'
-    if args.type not in types:
+    if args.type and args.type not in types:
         print("\nError: %s not a recognized type\n" % args.type)
         parser.print_help()
         sys.exit()
+    Entrez.email = input('Enter email address to use NCBI Entrez: ')
     modify_xls(args.geo_accession, args.infile, out_file, args.alias, args.type)
 
 
