@@ -346,11 +346,11 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             outbook = write_experiments('ExperimentHiC', hic_expts, alias_prefix,
                                         file_dict, book, outbook)
         elif 'ExperimentHiC' in book.sheet_names() and not hic_expts:
-            print("No HiC experiments parsed from %s." % geo)
+            print("\nNo HiC experiments parsed from %s." % geo)
             print("If all samples are known to be HiC experiments,",
                   "this script can be rerun using -t HiC")
         elif 'ExperimentHiC' not in book.sheet_names() and hic_expts:
-            print("HiC experiments found in %s but no ExperimentHiC sheet present in workbook." % geo,
+            print("\nHiC experiments found in %s but no ExperimentHiC sheet present in workbook." % geo,
                   "HiC experiments will not be written to file.")
 
         seq_expts = [exp for exp in gds.experiments if exp.exptype in ['chipseq', 'rnaseq', 'tsaseq']]
@@ -358,11 +358,11 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             outbook = write_experiments('ExperimentSeq', seq_expts, alias_prefix,
                                         file_dict, book, outbook)
         elif 'ExperimentSeq' in book.sheet_names() and not seq_expts:
-            print("No ChIP-seq, RNA-seq, or TSA-seq experiments parsed from %s." % geo)
+            print("\nNo ChIP-seq, RNA-seq, or TSA-seq experiments parsed from %s." % geo)
             print("If all samples are known to be a single experiment type,",
                   "this script can be rerun using -t option.")
         elif 'ExperimentSeq' not in book.sheet_names() and seq_expts:
-            print("ChIP-seq, RNA-seq, or TSA-seq experiments found in %s" % geo,
+            print("\nChIP-seq, RNA-seq, or TSA-seq experiments found in %s" % geo,
                   "but no ExperimentSeq sheet present in workbook.",
                   "These experiments will not be written to file.")
             # sheet_dict_seq = {}
@@ -395,11 +395,11 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             outbook = write_experiments('ExperimentAtacseq', atac_expts, alias_prefix,
                                         file_dict, book, outbook)
         elif 'ExperimentAtacseq' in book.sheet_names() and not atac_expts:
-            print("No ATAC-seq experiments parsed from %s." % geo)
+            print("\nNo ATAC-seq experiments parsed from %s." % geo)
             print("If all samples are known to be ATAC-seq experiments,",
-                  "this script can be rerun using -t ATAC-seq\n")
+                  "this script can be rerun using -t ATAC-seq")
         elif 'ExperimentAtacseq' not in book.sheet_names() and atac_expts:
-            print("ATAC-seq experiments found in %s" % geo,
+            print("\nATAC-seq experiments found in %s" % geo,
                   "but no ExperimentAtacseq sheet present in workbook.",
                   "ATAC-seq experiments will not be written to file.")
         # if 'other' in exp_types:
@@ -411,11 +411,11 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             outbook = write_experiments('ExperimentRepliseq', rep_expts, alias_prefix,
                                         file_dict, book, outbook)
         elif 'ExperimentRepliseq' in book.sheet_names() and not rep_expts:
-            print("No Repliseq experiments parsed from %s." % geo)
+            print("\nNo Repliseq experiments parsed from %s." % geo)
             print("If all samples are known to be Repliseq experiments,",
-                  "this script can be rerun using -t Repliseq\n")
+                  "this script can be rerun using -t Repliseq")
         elif 'ExperimentRepliseq' not in book.sheet_names() and rep_expts:
-            print("Repliseq experiments found in %s" % geo,
+            print("\nRepliseq experiments found in %s" % geo,
                   "but no ExperimentRepliseq sheet present in workbook.",
                   "Repliseq experiments will not be written to file.")
 
@@ -424,11 +424,11 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             outbook = write_experiments('ExperimentDamid', dam_expts, alias_prefix,
                                         file_dict, book, outbook)
         elif 'ExperimentDamid' in book.sheet_names() and not dam_expts:
-            print("No DamID experiments found in %s." % geo)
+            print("\nNo DamID experiments found in %s." % geo)
             print("If all samples are known to be DamID experiments,",
-                  "this script can be rerun using -t DamID\n")
+                  "this script can be rerun using -t DamID")
         elif 'ExperimentDamid' not in book.sheet_names() and dam_expts:
-            print("DamID experiments found in %s" % geo,
+            print("\nDamID experiments found in %s" % geo,
                   "but no ExperimentDamid sheet present in workbook.",
                   "DamID experiments will not be written to file.")
 
@@ -437,11 +437,11 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             outbook = write_experiments('ExperimentCaptureC', cap_expts, alias_prefix,
                                         file_dict, book, outbook)
         elif 'ExperimentCaptureC' in book.sheet_names() and not cap_expts:
-            print("No Capture-C experiments parsed from %s." % geo)
+            print("\nNo Capture-C experiments parsed from %s." % geo)
             print("If all samples are known to be Capture-C experiments,",
-                  "this script can be rerun using -t CaptureC\n")
+                  "this script can be rerun using -t CaptureC")
         elif 'ExperimentCaptureC' not in book.sheet_names() and cap_expts:
-            print("Capture-C experiments found in %s" % geo,
+            print("\nCapture-C experiments found in %s" % geo,
                   "but no ExperimentCaptureC sheet present in workbook."
                   "Capture-C experiments will not be written to file.")
 
@@ -450,28 +450,28 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             outbook = write_experiments('ExperimentChiapet', chia_expts, alias_prefix,
                                         file_dict, book, outbook)
         elif 'ExperimentChiapet' in book.sheet_names() and not chia_expts:
-            print("No ChIA-Pet experiments parsed from %s." % geo)
+            print("\nNo ChIA-Pet experiments parsed from %s." % geo)
             print("If all samples are known to be ChIA-Pet experiments,",
-                  "this script can be rerun using -t Chia-Pet\n")
+                  "this script can be rerun using -t Chia-Pet")
         elif 'ExperimentChiapet' not in book.sheet_names() and chia_expts:
-            print("ChIA-Pet experiments found in %s" % geo,
+            print("\nChIA-Pet experiments found in %s" % geo,
                   "but no ExperimentChiapet sheet present in workbook.",
                   "ChIA-Pet experiments will not be written to file.")
 
         other = [exp for exp in gds.experiments if exp.exptype not in types]
         if other:
             if len(other) == len(gds.experiments):
-                print("Experiment types of dataset could not be parsed. %s sheet not written" %
+                print("\nExperiment types of dataset could not be parsed. %s sheet not written" %
                       ', '.join(exp_sheets))
             else:
-                print("The following accessions had experiment types that could not be parsed:")
+                print("\nThe following accessions had experiment types that could not be parsed:")
                 for item in other:
                     print(item.geo)
             print("If these samples are of a single known experiment type,",
                   "this script can be rerun using -t <experiment_type>")
 
     outbook.save(outfile)
-    print("Wrote file to %s." % outfile)
+    print("\nWrote file to %s." % outfile)
     return
 
 
