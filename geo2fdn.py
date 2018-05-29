@@ -268,7 +268,8 @@ def create_dataset(geo_acc):
 def write_experiments(sheet_name, experiments, alias_prefix, file_dict, inbook, outbook):
     sheet_dict = {}
     type_dict = {'chipseq': 'CHIP-seq', 'tsaseq': 'TSA-seq', 'rnaseq': 'RNA-seq',
-                 'atacseq': 'ATAC-seq', 'capturec': 'capture Hi-C', 'damid': 'DAM-ID seq'}
+                 'atacseq': 'ATAC-seq', 'capturec': 'capture Hi-C', 'damid': 'DAM-ID seq',
+                 'chiapet': 'CHIA-pet', 'placseq': 'PLAC-seq'}
     fields = inbook.sheet_by_name(sheet_name).row_values(0)
     for item in fields:
         sheet_dict[item] = fields.index(item)
@@ -282,12 +283,12 @@ def write_experiments(sheet_name, experiments, alias_prefix, file_dict, inbook, 
         sheet.write(row, sheet_dict['*biosample'], alias_prefix + ':' + entry.bs)
         sheet.write(row, sheet_dict['files'], ','.join(file_dict[entry.geo]))
         sheet.write(row, sheet_dict['dbxrefs'], 'GEO:' + entry.geo)
-        if entry.exptype.lower() == 'chipseq':
-            sheet.write(row, sheet_dict['*experiment_type'], 'CHIP-seq')
-        elif entry.exptype.lower() == 'tsaseq':
-            sheet.write(row, sheet_dict['*experiment_type'], 'TSA-seq')
-        elif entry.exptype.lower() == 'rnaseq':
-            sheet.write(row, sheet_dict['*experiment_type'], 'RNA-seq')
+        if entry.exptype in type_dict.keys():
+            sheet.write(row, sheet_dict['*experiment_type'], type_dict[entry.exptype])
+        # elif entry.exptype == 'tsaseq':
+        #     sheet.write(row, sheet_dict['*experiment_type'], 'TSA-seq')
+        # elif entry.exptype == 'rnaseq':
+        #     sheet.write(row, sheet_dict['*experiment_type'], 'RNA-seq')
         row += 1
     return outbook
 
@@ -366,6 +367,12 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
                      exp.exptype.startswith('dnase hic')]
         if 'ExperimentHiC' in book.sheet_names() and hic_expts:
             outbook = write_experiments('ExperimentHiC', hic_expts, alias_prefix, file_dict, book, outbook)
+        elif 'ExperimentHiC' in book.sheet_names() and not hic_expts:
+            print("No HiC experiments found in %s.")
+            print("If all samples are known to be HiC experiments, this script can be rerun using -t HiC")
+        elif 'ExperimentHiC' not in book.sheet_names() and hic_expts:
+            print("HiC experiments found in %s but no ExperimentHiC sheet present in workbook. \
+                  HiC experiments will not be written to file.")
             # write_experiments(sheet_name, experiments, alias, file_dict, inbook, outbook)
             # sheet_dict_hic = {}
             # hic_sheets = book.sheet_by_name('ExperimentHiC').row_values(0)
