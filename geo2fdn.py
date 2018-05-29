@@ -185,8 +185,8 @@ def parse_bs_record(geo_id):
     # treatments = None
     for item in bs_xml.iter("Attribute"):
         atts[item.attrib['attribute_name']] = item.text
-    for name in ['sample_name', 'strain', 'genotype', 'cell_line',
-                 'cell line', 'tissue', 'sirna transfected', 'treatment']:
+    for name in ['source_name','sample_name', 'gender', 'strain', 'genotype', 'cross',
+                 'cell_line', 'cell line', 'tissue', 'sirna transfected', 'treatment']:
         if name in atts.keys() and atts[name].lower() != 'none':
             if atts[name] not in descr:
                 descr += atts[name] + '; '
@@ -267,6 +267,8 @@ def create_dataset(geo_acc):
 
 def write_experiments(sheet_name, experiments, alias_prefix, file_dict, inbook, outbook):
     sheet_dict = {}
+    type_dict = {'chipseq': 'CHIP-seq', 'tsaseq': 'TSA-seq', 'rnaseq': 'RNA-seq',
+                 'atacseq': 'ATAC-seq', 'capturec': 'capture Hi-C', 'damid': 'DAM-ID seq'}
     fields = inbook.sheet_by_name(sheet_name).row_values(0)
     for item in fields:
         sheet_dict[item] = fields.index(item)
@@ -479,7 +481,7 @@ def modify_xls(geo, infile, outfile, alias_prefix, experiment_type=None, types=v
             #     cc.write(row, sheet_dict_cc['files'], ','.join(file_dict[entry.geo]))
             #     cc.write(row, sheet_dict_cc['dbxrefs'], 'GEO:' + entry.geo)
             #     row += 1
-        chia_expts = [exp for exp in gds.experiments if exp.exptype == 'chiapet']
+        chia_expts = [exp for exp in gds.experiments if exp.exptype in ['chiapet', 'placseq']]
         if 'ExperimentChiapet' in book.sheet_names() and chia_expts:
             outbook = write_experiments('ExperimentChiapet', chia_expts, alias_prefix, file_dict, book, outbook)
             # sheet_dict_chia = {}
