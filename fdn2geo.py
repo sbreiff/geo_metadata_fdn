@@ -36,9 +36,11 @@ What to import from Submit4dn xls:
 
 '''
 
+from dcicutils import ff_utils as ff
 import xlrd
 import xlwt
 from xlutils.copy import copy
+import wranglertools.import_data as import_data
 
 # create classes for 4dn items? publication, biosample, experiment, filefastq, fileprocessed(?)
 
@@ -47,14 +49,27 @@ class Publication:
     def __init__(self):
         pass
 
+
 class Biosample_4dn:
 
     def __init__(self):
-        # self.alias = ''
+        self.alias = ''
+        # some 'characteristics'?
+        self.treatments = None
+        self.modifications = None
+        self.biosource = None
+
+
+class Biosource_4dn:
+
+    def __init__(self):
+        self.alias = ''
         self.source_name = ''
+        self.cell_line = ''
         self.organism = ''
         # some 'characteristics'?
-        self.treatments = ''
+        self.modifications = ''
+
 
 class Experiment_4dn:
 
@@ -63,6 +78,7 @@ class Experiment_4dn:
         self.bs = ''
         self.raw_files = []
         self.proc_files = []
+
 
 class FastqFile:
 
@@ -73,32 +89,108 @@ class FastqFile:
         self.read_length = 0
         self.layout = ''
 
+
+class Dataset:
+
+    def __init__(self):
+        self.biosamples = []
+        self.biosources = []
+        self.experiments = []
+        self.fastqs = []
+
+
 class Sample:
 
     def __init__(self):
         pass
+
 
 class Series:
 
     def __init__(self):
         self.samples = []
 
+
+def get_source_name(biosource_json):
+    cell_line = None
+    name = biosource_json['biosource_name']
+    if name.endswith(')'):
+        name = name[:name.index('(')]
+    if 'Stable Transfection' in name:
+        name = name[:name.index('Stable')]
+    descr = biosource_json.get('description')
+    if descr.endswith(')'):
+        descr = descr[:descr.index('(')]
+    if biosource_json.get('cell_line'):
+        definition = biosource_json.get('cell_line').get('definition')
+        cell_line = biosource_json.get('cell_line').get('display_title')
+    else:
+        definition = None
+    if name.startswith('GM') or name.startswith('HG'):
+        source_name = 'lymphoblastoid cell line'
+    elif 'F12' in name and 'CAST' in name:
+        source_name = 'mouse embryonic stem cells'
+    elif 'MEF' in name or name == 'olfactory receptor cell':
+        source_name = name
+    elif name == descr and definition and len(definition) < 60:
+        if name in definition:
+            source_name = definition
+        elif definition and len(definition) < 60:
+            source_name = name + '; ' + definition
+    elif descr and len(descr) < 60:
+        if name in descr:
+            source_name = descr
+        else:
+            source_name = name + '; ' + descr
+    else:
+        source_name = name
+    if 'cell' not in source_name.lower() and len(source_name) < 20:
+        source_name = name + ' ' + biosource_json.get('biosource_type')
+    return source_name, cell_line
+
+
 def parse_fdn_xls(fdn_xls):
     book = xlrd.open_workbook(fdn_xls)
-    sheet = book.sheet_by_name('Biosample')
+    biosample_sheet = book.sheet_by_name('Biosample')
     bs_fields = book.sheet_by_name('Biosample').row_values(0)
     bs_dict = {}
-    if '*biosource' in bs_fields:
-        bs_dict['biosource'] = bs_fields.index('*biosource')
-    if 'treatments' in bs_fields:
-        bs_dict['treatments'] = bs_fields.index('treatments')
+    org_dict = {'dmelanogaster': 'Drosophila melanogaster',
+                'mouse': 'Mus musculus',
+                'human': 'Homo sapiens'}
+    for field in bs_fields:
+        bs_dict[field] = bs_fields.index(field)
     # start with BioSample
     # get list of biosources
+    biosource_ids = []
+    for i in range(sheet.nrows):
+        if not sheet.cell_value(i, 0).startswith('#'):
+            biosource_item = biosample_sheet.cell_value(i, bs_dict['biosource'])
+            if biosource_item not in biosource_ids:
+                biosource_ids.append(sheet.cell_value(i, bs_dict['biosource']))
     # while doing this either take info from Biosource sheet, or look up biosource on portal
+    biosources = []
     if 'Biosource' in book.sheet_names():
-        pass
+        # get biosource info from Biosource sheet
+        for item in biosource_ids:
+            # look for alias in biosource sheet_dict
+            # then take description for get_source_name
+            # also look for cell_line field
+            pass
     else:
-        pass
+        # get biosource info from database
+        for item in biosource_ids:
+            # source name: get biosource cell line
+            result = ff.get_metadata(item, ff_env="data", frame="embedded")
+            source_name, cell_line = get_source_name(result)
+            alias = item
+            indiv = result['individual']
+            org = result.get('individual').get('organism').get('display_title')
+            # check for modifications
+            if result.get('modifications'):
+                pass
+            else:
+                mods = None
+            biosources.append(Biosource(alias, source_name, cell_line, org, mods))
     # parse treatments
 
     # next parse FileFastq sheet
