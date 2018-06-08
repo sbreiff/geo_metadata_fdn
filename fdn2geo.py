@@ -149,54 +149,52 @@ def get_source_name(biosource_json):
     return source_name, cell_line
 
 
+def read_sheet(filename, sheetname, class_name, fields):
+    rows = import_data.reader(filename, sheetname)
+    headers = next(rows)
+    field_dict = {}
+    for header in headers:
+        field_dict[header] = headers.index(header)
+    objs = []
+    for row in rows:
+        if not row[0].startswith('#'):
+            cells = [row[field_dict[field]] for field in fields]
+            objs.append(class_name(*cells))
+    return objs
+
+
 def parse_fdn_xls(fdn_xls):
-    book = xlrd.open_workbook(fdn_xls)
-    biosample_sheet = book.sheet_by_name('Biosample')
-    bs_fields = book.sheet_by_name('Biosample').row_values(0)
-    bs_dict = {}
+    biosamples = read_sheet(fdn_xls, 'Biosample', Biosample_4dn,
+                            ['aliases', 'treatments', 'modifications', '*biosource'])
     org_dict = {'dmelanogaster': 'Drosophila melanogaster',
                 'mouse': 'Mus musculus',
                 'human': 'Homo sapiens'}
-    for field in bs_fields:
-        bs_dict[field] = bs_fields.index(field)
     # start with BioSample
     # get list of biosources
-    biosource_ids = []
-    for i in range(sheet.nrows):
-        if not sheet.cell_value(i, 0).startswith('#'):
-            biosource_item = biosample_sheet.cell_value(i, bs_dict['biosource'])
-            if biosource_item not in biosource_ids:
-                biosource_ids.append(sheet.cell_value(i, bs_dict['biosource']))
+    biosource_ids = [sample.biosource for sample in biosamples]
     # while doing this either take info from Biosource sheet, or look up biosource on portal
     biosources = []
-    if 'Biosource' in book.sheet_names():
-        # get biosource info from Biosource sheet
-        for item in biosource_ids:
-            # look for alias in biosource sheet_dict
-            # then take description for get_source_name
-            # also look for cell_line field
+    for item in biosource_ids:
+        # source name: get biosource cell line
+        result = ff.get_metadata(item, ff_env="data", frame="embedded")
+        source_name, cell_line = get_source_name(result)
+        alias = item
+        indiv = result['individual']
+        org = result.get('individual').get('organism').get('display_title')
+        # check for modifications
+        if result.get('modifications'):
             pass
-    else:
-        # get biosource info from database
-        for item in biosource_ids:
-            # source name: get biosource cell line
-            result = ff.get_metadata(item, ff_env="data", frame="embedded")
-            source_name, cell_line = get_source_name(result)
-            alias = item
-            indiv = result['individual']
-            org = result.get('individual').get('organism').get('display_title')
-            # check for modifications
-            if result.get('modifications'):
-                pass
-            else:
-                mods = None
-            biosources.append(Biosource(alias, source_name, cell_line, org, mods))
+        else:
+            mods = None
+        biosources.append(Biosource_4dn(alias, source_name, cell_line, org_dict[org], mods))
     # parse treatments
 
     # next parse FileFastq sheet
 
     # next parse Experiment sheet(s)
-    pass
+    book = xlrd.open_workbook(fdn_xls)
+    sheetnames = [name for name in book.sheet_names() if name.startswith('Experiment') and
+                  'Set' not in name and 'Mic' not in name]
 
 # method to grab extra info from data portal? Ex. md5
 
