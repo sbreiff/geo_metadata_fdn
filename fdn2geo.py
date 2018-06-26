@@ -34,6 +34,14 @@ What to import from Submit4dn xls:
  - filefastq sheet
  - fileprocessed(?)
 
+
+
+ Collecting metadata:
+ - some items (like biosources, antibodies, etc) may not be in workbook but
+ actually just in portal (with aliases/ids linked in workbook). Maybe one approach is
+ to grab list of experiment sets, run script to get all linked item ids, and then
+ query portal for each type? 
+
 '''
 
 from dcicutils import ff_utils as ff
